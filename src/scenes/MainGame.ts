@@ -85,9 +85,8 @@ export default class MainGame extends Phaser.Scene {
     private lastGoldenMusicCheckAt: number = -99999;
     private isJumboActive: boolean = false; // Flag untuk membatasi 1 hiu jumbo saja
 
-    private torpedoIconSprite!: Phaser.GameObjects.Sprite;
-    private targetBtnBg!: Phaser.GameObjects.Rectangle;
-    private torpedoBtnBg!: Phaser.GameObjects.Rectangle;
+    private targetBtnBg!: Phaser.GameObjects.Arc;
+    private torpedoBtnBg!: Phaser.GameObjects.Arc;
     private lightningGfx!: Phaser.GameObjects.Graphics;
     private laserBeamSegments: Phaser.GameObjects.Sprite[] = [];
     private laserImpactGlow!: Phaser.GameObjects.Sprite;
@@ -1020,6 +1019,7 @@ export default class MainGame extends Phaser.Scene {
             fontFamily: this.uiFontFamily, fontSize: '32px', color: '#ffffff', fontStyle: 'bold', stroke: '#004488', strokeThickness: 6
         }).setOrigin(0.5).setDepth(1002).setAlpha(0);
 
+        this.playWaterWhooshSound();
         this.safePlaySound('snd_scene_wave', { volume: 0.8 });
 
         const animData = { progress: 0, phase: 0 };
@@ -1565,7 +1565,7 @@ export default class MainGame extends Phaser.Scene {
         const rightX = w - 60;
         const createSkillBtn = (y: number, label: string, iconKey: string, cost?: string) => {
             const bg = this.add.circle(rightX, y, 35, 0x001133, 0.7).setStrokeStyle(3, 0x0088ff).setDepth(29);
-            const icon = this.add.image(rightX, y - 5, iconKey).setDepth(31).setScale(0.6);
+            this.add.image(rightX, y - 5, iconKey).setDepth(31).setScale(0.6);
             this.add.text(rightX, y + 22, label, { fontSize: '11px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(31);
             if (cost) {
                 this.add.text(rightX + 20, y + 10, cost, { fontSize: '12px', color: '#ffd700', fontStyle: 'bold' }).setOrigin(0.5).setDepth(32);
@@ -1669,9 +1669,6 @@ export default class MainGame extends Phaser.Scene {
     }
 
     private setupSideMenuUI() {
-        const w = this.cameras.main.width;
-        const h = this.cameras.main.height;
-
         // More Button (Hamburger) - Top Left
         const moreBtn = this.add.container(40, 40).setDepth(150);
         const moreBg = this.add.circle(0, 0, 25, 0x004488, 0.8).setStrokeStyle(3, 0x00f2ff).setInteractive();
@@ -2554,7 +2551,6 @@ export default class MainGame extends Phaser.Scene {
 
         if (this.isOfflineMode) {
             this.score -= cost;
-            this.clientScore = this.score; // Sinkronkan nilai dasar
             this.updateScoreDisplay();
         } else {
             // Kirim tembakan ke server
@@ -2712,7 +2708,6 @@ export default class MainGame extends Phaser.Scene {
         }
 
         const ownerId = bullet.getData('ownerId') || 'local_p1';
-        const isLocalKill = ownerId === 'local_p1';
 
         // Efek Jaring (Web) muncul tepat menempel pada ikan
         // Buat peluru maju sedikit lagi ke arah ikan agar terlihat "menempel" sebelum meledak
@@ -3158,7 +3153,7 @@ export default class MainGame extends Phaser.Scene {
                     scale: 3,
                     duration: 2500,
                     onUpdate: (tween) => {
-                        const t = tween.getValue();
+                        const t = tween.getValue() || 0;
                         rays.clear();
                         for (let i = 0; i < 24; i++) {
                             const angle = (Math.PI * 2 / 24) * i + t * 2;
@@ -3630,5 +3625,6 @@ export default class MainGame extends Phaser.Scene {
         
         if (this.dummyScoreText) this.dummyScoreText.setText(this.dummyScore.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
         if (this.dummyBetText) this.dummyBetText.setText(this.dummyBetAmount.toFixed(2));
+        this.updateSkillCosts();
     }
 }
