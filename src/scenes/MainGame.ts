@@ -85,8 +85,8 @@ export default class MainGame extends Phaser.Scene {
     private lastGoldenMusicCheckAt: number = -99999;
     private isJumboActive: boolean = false; // Flag untuk membatasi 1 hiu jumbo saja
 
-    private targetBtnBg!: Phaser.GameObjects.Arc;
-    private torpedoBtnBg!: Phaser.GameObjects.Arc;
+    private targetBtnBg!: Phaser.GameObjects.Shape;
+    private torpedoBtnBg!: Phaser.GameObjects.Shape;
     private lightningGfx!: Phaser.GameObjects.Graphics;
     private laserBeamSegments: Phaser.GameObjects.Sprite[] = [];
     private laserImpactGlow!: Phaser.GameObjects.Sprite;
