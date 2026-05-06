@@ -1500,39 +1500,34 @@ export default class MainGame extends Phaser.Scene {
 
     private setupJackpotBars() {
         const w = this.cameras.main.width;
-        const panelWidth = 800;
-        const panelHeight = 60;
+        const h = this.cameras.main.height;
+        const isMobile = h < 600 || w < 1000;
+        const uiScale = isMobile ? 0.75 : 1.0;
+
+        const createBar = (x: number, y: number, label: string, amount: string, color: number) => {
+            const barW = 200 * uiScale;
+            const barH = 35 * uiScale;
+            const container = this.add.container(x, y).setDepth(30);
+            
+            const bg = this.add.graphics();
+            bg.fillStyle(0x000000, 0.6);
+            bg.lineStyle(2, color, 1);
+            bg.fillRoundedRect(-barW/2, -barH/2, barW, barH, 10);
+            bg.strokeRoundedRect(-barW/2, -barH/2, barW, barH, 10);
+            
+            const labelTxt = this.add.text(-barW/2 + 10, 0, label, { fontSize: (11 * uiScale) + 'px', color: '#fff', fontStyle: 'bold' }).setOrigin(0, 0.5);
+            const amountTxt = this.add.text(barW/2 - 10, 0, amount, { fontSize: (14 * uiScale) + 'px', color: '#ffd700', fontStyle: 'bold' }).setOrigin(1, 0.5);
+            
+            container.add([bg, labelTxt, amountTxt]);
+        };
+
+        const spacing = 210 * uiScale;
         const centerX = w / 2;
-        const centerY = 40;
+        const barY = isMobile ? 25 : 30;
 
-        // Background Panel
-        const bg = this.add.graphics().setDepth(30);
-        bg.fillStyle(0x000000, 0.6);
-        bg.fillRoundedRect(centerX - panelWidth / 2, centerY - panelHeight / 2, panelWidth, panelHeight, 10);
-        
-        // JILI Jackpot (Center)
-        this.add.text(centerX, centerY - 15, 'JILI Jackpot', {
-            fontFamily: this.uiFontFamily, fontSize: '14px', color: '#ffd700', fontStyle: 'bold'
-        }).setOrigin(0.5).setDepth(31);
-        this.jiliJackpotText = this.add.text(centerX, centerY + 10, '0.00', {
-            fontFamily: this.uiFontFamily, fontSize: '28px', color: '#ffcc00', fontStyle: 'bold', stroke: '#000', strokeThickness: 4
-        }).setOrigin(0.5).setDepth(31);
-
-        // Speed Jackpot (Left)
-        this.add.text(centerX - 250, centerY - 15, 'Speed Jackpot', {
-            fontFamily: this.uiFontFamily, fontSize: '12px', color: '#ffd700'
-        }).setOrigin(0.5).setDepth(31);
-        this.speedJackpotText = this.add.text(centerX - 250, centerY + 10, '0.00', {
-            fontFamily: this.uiFontFamily, fontSize: '22px', color: '#ffd700', fontStyle: 'bold'
-        }).setOrigin(0.5).setDepth(31);
-
-        // Lucky Jackpot (Right)
-        this.add.text(centerX + 250, centerY - 15, 'Lucky Jackpot', {
-            fontFamily: this.uiFontFamily, fontSize: '12px', color: '#ffd700'
-        }).setOrigin(0.5).setDepth(31);
-        this.luckyJackpotText = this.add.text(centerX + 250, centerY + 10, '0.00', {
-            fontFamily: this.uiFontFamily, fontSize: '22px', color: '#ffd700', fontStyle: 'bold'
-        }).setOrigin(0.5).setDepth(31);
+        createBar(centerX - spacing, barY, 'GRAND JACKPOT', '6,159.20', 0xff0000);
+        createBar(centerX, barY, 'JILI JACKPOT', '6,159.20', 0xffd700);
+        createBar(centerX + spacing, barY, 'MEGA JACKPOT', '6,159.20', 0x00f2ff);
 
         this.updateJackpotDisplay();
     }
@@ -1587,34 +1582,43 @@ export default class MainGame extends Phaser.Scene {
     private setupFishingWarUI() {
         const w = this.cameras.main.width;
         const h = this.cameras.main.height;
+        const isMobile = h < 600 || w < 1000;
+        const uiScale = isMobile ? 0.75 : 1.0;
+
+        // --- AUTO FULLSCREEN ON FIRST TAP ---
+        if (isMobile) {
+            this.input.once('pointerdown', () => {
+                if (!this.scale.isFullscreen) {
+                    this.scale.startFullscreen();
+                }
+            });
+        }
 
         this.setupJackpotBars();
 
-        // --- TOP LEFT: User ID (Placeholder) ---
-        // joyBtn removed as requested
-
         // --- TOP RIGHT: User Info ---
-        this.add.text(w - 150, 20, '61700410801822304', { fontSize: '14px', color: '#fff' }).setOrigin(0.5).setDepth(100);
-
-        // btn_play removed as requested
+        this.add.text(w - (150 * uiScale), 20, '61700410801822304', { fontSize: (14 * uiScale) + 'px', color: '#fff' }).setOrigin(0.5).setDepth(100);
 
         // --- RIGHT SIDE: Skills ---
-        const rightX = w - 60;
+        const rightX = w - (60 * uiScale);
         const createSkillBtn = (y: number, label: string, iconKey: string, cost?: string) => {
-            const bg = this.add.circle(rightX, y, 35, 0x001133, 0.7).setStrokeStyle(3, 0x0088ff).setDepth(29);
-            this.add.image(rightX, y - 5, iconKey).setDepth(31).setScale(0.6);
-            this.add.text(rightX, y + 22, label, { fontSize: '11px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(31);
+            const radius = 35 * uiScale;
+            const bg = this.add.circle(rightX, y, radius, 0x001133, 0.7).setStrokeStyle(3 * uiScale, 0x0088ff).setDepth(29);
+            this.add.image(rightX, y - (5 * uiScale), iconKey).setDepth(31).setScale(0.6 * uiScale);
+            this.add.text(rightX, y + (22 * uiScale), label, { fontSize: (11 * uiScale) + 'px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(31);
             if (cost) {
-                this.add.text(rightX + 20, y + 10, cost, { fontSize: '12px', color: '#ffd700', fontStyle: 'bold' }).setOrigin(0.5).setDepth(32);
+                this.add.text(rightX + (20 * uiScale), y + (10 * uiScale), cost, { fontSize: (12 * uiScale) + 'px', color: '#ffd700', fontStyle: 'bold' }).setOrigin(0.5).setDepth(32);
             }
-            const btn = this.add.circle(rightX, y, 35, 0, 0.01).setInteractive().setDepth(32);
+            const btn = this.add.circle(rightX, y, radius, 0, 0.01).setInteractive().setDepth(32);
             return { btn, bg };
         };
 
-        const targetObj = createSkillBtn(100, 'Target', 'icon_target');
-        const torpedoObj = createSkillBtn(180, 'Torpedo', 'icon_torpedo');
-        const autoObj = createSkillBtn(260, 'Auto Fishing', 'icon_auto');
-        const frozenObj = createSkillBtn(340, 'Frozen', 'icon_frozen', '30');
+        const startY = isMobile ? 70 : 100;
+        const gapY = isMobile ? 75 : 80;
+        const targetObj = createSkillBtn(startY, 'Target', 'icon_target');
+        const torpedoObj = createSkillBtn(startY + gapY, 'Torpedo', 'icon_torpedo');
+        const autoObj = createSkillBtn(startY + gapY * 2, 'Auto Fishing', 'icon_auto');
+        const frozenObj = createSkillBtn(startY + gapY * 3, 'Frozen', 'icon_frozen', '30');
 
         this.targetBtnBg = targetObj.bg;
         this.torpedoBtnBg = torpedoObj.bg;
@@ -1647,57 +1651,62 @@ export default class MainGame extends Phaser.Scene {
 
         // --- BOTTOM CENTER: Waiting Panel ---
         const waitBg = this.add.graphics().setDepth(30);
-        waitBg.fillStyle(0x001133, 0.8).fillRoundedRect(w/2 - 80, h - 50, 160, 40, 10);
-        this.add.text(w/2, h - 30, 'WAITING TO JOIN', { fontSize: '14px', color: '#00ffff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(31);
+        const waitW = isMobile ? 120 : 160;
+        const waitH = isMobile ? 30 : 40;
+        waitBg.fillStyle(0x001133, 0.8).fillRoundedRect(w/2 - waitW/2, h - waitH - 10, waitW, waitH, 10);
+        this.add.text(w/2, h - waitH/2 - 10, 'WAITING TO JOIN', { fontSize: (isMobile ? 11 : 14) + 'px', color: '#00ffff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(31);
 
         // --- PLAYER 1 (BOTTOM LEFT) ---
-        const p1X = 250;
-        const p1Y = h - 45;
+        const p1X = isMobile ? 180 : 250;
+        const p1Y = h - (isMobile ? 35 : 45);
 
         // Minus/Plus and Bet display
         const betPanel = this.add.graphics().setDepth(30);
-        betPanel.fillStyle(0x001133, 0.9).lineStyle(2, 0xffd700).fillRoundedRect(p1X - 100, p1Y - 20, 200, 40, 20).strokeRoundedRect(p1X - 100, p1Y - 20, 200, 40, 20);
+        const bW = 200 * uiScale;
+        const bH = 40 * uiScale;
+        betPanel.fillStyle(0x001133, 0.9).lineStyle(2, 0xffd700).fillRoundedRect(p1X - bW/2, p1Y - bH/2, bW, bH, 20 * uiScale).strokeRoundedRect(p1X - bW/2, p1Y - bH/2, bW, bH, 20 * uiScale);
         
-        const btnMinus = this.add.circle(p1X - 90, p1Y, 18, 0x004488).setStrokeStyle(2, 0x00f2ff).setInteractive().setDepth(31);
-        this.add.text(p1X - 90, p1Y, '-', { fontSize: '24px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(32);
+        const btnMinus = this.add.circle(p1X - (90 * uiScale), p1Y, 18 * uiScale, 0x004488).setStrokeStyle(2, 0x00f2ff).setInteractive().setDepth(31);
+        this.add.text(p1X - (90 * uiScale), p1Y, '-', { fontSize: (24 * uiScale) + 'px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(32);
         btnMinus.on('pointerdown', () => {
             this.playUiClick(0.4);
             if (this.betAmount > 0.1) this.betAmount -= 0.1;
             this.updateScoreDisplay();
         });
 
-        const btnPlus = this.add.circle(p1X + 90, p1Y, 18, 0x004488).setStrokeStyle(2, 0x00f2ff).setInteractive().setDepth(31);
-        this.add.text(p1X + 90, p1Y, '+', { fontSize: '24px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(32);
+        const btnPlus = this.add.circle(p1X + (90 * uiScale), p1Y, 18 * uiScale, 0x004488).setStrokeStyle(2, 0x00f2ff).setInteractive().setDepth(31);
+        this.add.text(p1X + (90 * uiScale), p1Y, '+', { fontSize: (24 * uiScale) + 'px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(32);
         btnPlus.on('pointerdown', () => {
             this.playUiClick(0.4);
             this.betAmount += 0.1;
             this.updateScoreDisplay();
         });
 
-        this.betText = this.add.text(p1X - 40, p1Y, '0.10', { fontSize: '18px', color: '#00f2ff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(31);
-        this.add.text(p1X + 20, p1Y, 'LV 1', { fontSize: '12px', color: '#fff', backgroundColor: '#008800' }).setOrigin(0.5).setDepth(31);
+        this.betText = this.add.text(p1X - (40 * uiScale), p1Y, '0.10', { fontSize: (18 * uiScale) + 'px', color: '#00f2ff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(31);
+        this.add.text(p1X + (20 * uiScale), p1Y, 'LV 1', { fontSize: (12 * uiScale) + 'px', color: '#fff', backgroundColor: '#008800' }).setOrigin(0.5).setDepth(31);
 
         // Balance display below bet
         const balPanel = this.add.graphics().setDepth(30);
-        balPanel.fillStyle(0x000000, 0.6).fillRoundedRect(p1X - 80, p1Y + 25, 160, 20, 5);
-        this.scoreText = this.add.text(p1X, p1Y + 35, '2,000.00', { fontSize: '16px', color: '#ffd700', fontStyle: 'bold' }).setOrigin(0.5).setDepth(31);
+        balPanel.fillStyle(0x000000, 0.6).fillRoundedRect(p1X - (80 * uiScale), p1Y + (25 * uiScale), 160 * uiScale, 20 * uiScale, 5);
+        this.scoreText = this.add.text(p1X, p1Y + (35 * uiScale), '2,000.00', { fontSize: (16 * uiScale) + 'px', color: '#ffd700', fontStyle: 'bold' }).setOrigin(0.5).setDepth(31);
 
         // --- PLAYER 2 (BOTTOM RIGHT) ---
-        const p2X = w - 250;
-        const p2Y = h - 45;
+        const p2X = w - (isMobile ? 180 : 250);
+        const p2Y = h - (isMobile ? 35 : 45);
 
         const p2Panel = this.add.graphics().setDepth(30);
-        p2Panel.fillStyle(0x001133, 0.9).fillRoundedRect(p2X - 100, p2Y - 20, 200, 40, 20);
-        this.dummyBetText = this.add.text(p2X - 60, p2Y, '0.10', { fontSize: '18px', color: '#00f2ff' }).setOrigin(0.5).setDepth(31);
-        this.add.text(p2X + 20, p2Y, '*********959', { fontSize: '12px', color: '#ccc' }).setOrigin(0.5).setDepth(31);
+        p2Panel.fillStyle(0x001133, 0.9).lineStyle(2, 0x0088ff).fillRoundedRect(p2X - bW/2, p2Y - bH/2, bW, bH, 20 * uiScale).strokeRoundedRect(p2X - bW/2, p2Y - bH/2, bW, bH, 20 * uiScale);
+
+        this.dummyBetText = this.add.text(p2X + (20 * uiScale), p2Y, '0.10', { fontSize: (18 * uiScale) + 'px', color: '#00f2ff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(31);
+        this.add.text(p2X - (40 * uiScale), p2Y, '********959', { fontSize: (12 * uiScale) + 'px', color: '#ccc' }).setOrigin(0.5).setDepth(31);
         
         const p2BalPanel = this.add.graphics().setDepth(30);
-        p2BalPanel.fillStyle(0x000000, 0.6).fillRoundedRect(p2X - 80, p2Y + 25, 160, 20, 5);
-        this.dummyScoreText = this.add.text(p2X, p2Y + 35, '472.00', { fontSize: '16px', color: '#ffd700' }).setOrigin(0.5).setDepth(31);
+        p2BalPanel.fillStyle(0x000000, 0.6).fillRoundedRect(p2X - (80 * uiScale), p2Y + (25 * uiScale), 160 * uiScale, 20 * uiScale, 5);
+        this.dummyScoreText = this.add.text(p2X, p2Y + (35 * uiScale), '471.40', { fontSize: (16 * uiScale) + 'px', color: '#ffd700', fontStyle: 'bold' }).setOrigin(0.5).setDepth(31);
 
         // --- SHOOTING BAR ---
-        const shoBarX = 30;
-        const shoBarY = h - 150;
+        const shoBarX = isMobile ? 20 : 30;
+        const shoBarY = h - (isMobile ? 110 : 150);
         const shoBg = this.add.graphics().setDepth(30);
         shoBg.fillStyle(0x000000, 0.5).fillRoundedRect(shoBarX - 10, shoBarY - 10, 20, 120, 10);
         const shoFill = this.add.graphics().setDepth(31);
