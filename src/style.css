@@ -30,9 +30,56 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+  overflow: hidden;
 }
 
 canvas {
   box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
-  border-radius: 8px;
+  display: block;
+}
+
+#rotate-device {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #010a14;
+  color: white;
+  z-index: 9999;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 20px;
+}
+
+#rotate-device .icon {
+  font-size: 80px;
+  margin-bottom: 20px;
+  animation: rotate 2s ease-in-out infinite;
+}
+
+#rotate-device p {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+@keyframes rotate {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(90deg); }
+  50% { transform: rotate(90deg); }
+  75% { transform: rotate(0deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* Show rotate warning ONLY in portrait on mobile */
+@media screen and (orientation: portrait) and (max-width: 900px) {
+  #rotate-device {
+    display: flex;
+  }
+  #app {
+    display: none;
+  }
 }
