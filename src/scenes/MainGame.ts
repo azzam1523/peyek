@@ -554,11 +554,48 @@ export default class MainGame extends Phaser.Scene {
 
         this.physics.add.overlap(this.bullets, this.fishGroup, this.handleCollision as any, undefined, this);
         this.physics.world.on('worldbounds', this.handleBulletWorldBounds, this);
+        
+        this.scale.on('resize', this.handleResize, this);
+        this.handleResize(); // Initial call
+
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
             this.physics.world.off('worldbounds', this.handleBulletWorldBounds, this);
+            this.scale.off('resize', this.handleResize, this);
             this.stopLaserFireSounds();
             this.stopAllBgmTracks();
         });
+    }
+
+    private handleResize() {
+        const w = this.scale.width;
+        const h = this.scale.height;
+
+        this.cameras.main.setViewport(0, 0, w, h);
+
+        if (this.backgroundImage) {
+            this.backgroundImage.setPosition(w / 2, h / 2);
+            // Ensure background covers the entire area (Envelop logic)
+            const scaleX = w / this.backgroundImage.width;
+            const scaleY = h / this.backgroundImage.height;
+            const scale = Math.max(scaleX, scaleY);
+            this.backgroundImage.setScale(scale);
+        }
+
+        if (this.backgroundOverlay) {
+            this.backgroundOverlay.setPosition(w / 2, h / 2);
+            this.backgroundOverlay.setSize(w, h);
+        }
+
+        // We might need to reposition UI elements if they are stored as class properties
+        // but for now, let's just make sure the background is full.
+    }
+
+    private toggleFullscreen() {
+        if (this.scale.isFullscreen) {
+            this.scale.stopFullscreen();
+        } else {
+            this.scale.startFullscreen();
+        }
     }
 
 
@@ -1753,12 +1790,20 @@ export default class MainGame extends Phaser.Scene {
                 iconGfx.lineTo(-5, 5);
                 iconGfx.closePath();
                 iconGfx.fillPath();
-            } else if (iconType === 'event') {
-                iconGfx.fillStyle(0xff0000);
-                iconGfx.fillRect(-15, -10, 30, 20);
-                iconGfx.lineStyle(1, 0xffd700);
-                iconGfx.lineBetween(-15, -10, 0, 0);
-                iconGfx.lineBetween(15, -10, 0, 0);
+            } else if (iconType === 'fullscreen') {
+                iconGfx.lineStyle(3, 0x00f2ff);
+                // Top-left corner
+                iconGfx.lineBetween(-15, -8, -15, -15);
+                iconGfx.lineBetween(-15, -15, -8, -15);
+                // Top-right corner
+                iconGfx.lineBetween(15, -8, 15, -15);
+                iconGfx.lineBetween(15, -15, 8, -15);
+                // Bottom-left corner
+                iconGfx.lineBetween(-15, 8, -15, 15);
+                iconGfx.lineBetween(-15, 15, -8, 15);
+                // Bottom-right corner
+                iconGfx.lineBetween(15, 8, 15, 15);
+                iconGfx.lineBetween(15, 15, 8, 15);
             }
             item.add(iconGfx);
 
@@ -1792,37 +1837,20 @@ export default class MainGame extends Phaser.Scene {
         bottomBg.strokeRoundedRect(0, 0, menuWidth, bottomHeight, 15);
         bottomPanel.add(bottomBg);
 
-        const help = createMenuItem(60, 60, 'Help', 'help', true);
-        const report = createMenuItem(180, 60, 'Report', 'report', true);
-        const music = createMenuItem(60, 150, 'Music', 'music', true);
-        const event = createMenuItem(60, bottomHeight - 30, 'Event', 'event', true); // Shifted like in image
-        
-        // Re-adjusting event for grid-like feel but matching image
-        event.item.setPosition(60, 150); // Just for now
-        // Let's do a better grid for bottom
-        help.item.setPosition(60, 60);
-        report.item.setPosition(180, 60);
-        music.item.setPosition(180, 150);
-        event.item.setPosition(60, 150);
-
-        bottomPanel.add([help.item, report.item, music.item, event.item]);
-
-        this.sideMenuUI.add([topPanel, bottomPanel]);
-
-        // Interaction for music
-        music.hitArea.on('pointerdown', () => {
+        const fullScreenBtn = createMenuItem(70, 60, 'FULLSCREEN', 'fullscreen');
+        fullScreenBtn.hitArea.on('pointerdown', () => {
             this.playUiClick();
-            const isMuted = this.sound.mute;
-            this.sound.setMute(!isMuted);
-            music.item.setAlpha(this.sound.mute ? 0.5 : 1);
+            this.toggleFullscreen();
         });
 
-        // Add some hover effects
-        [winMore, backpack, collection, help, report, music, event].forEach(obj => {
-            obj.hitArea.on('pointerover', () => obj.item.setScale(1.1));
-            obj.hitArea.on('pointerout', () => obj.item.setScale(1.0));
-        });
+        const help = createMenuItem(170, 60, 'Help', 'help');
+        const report = createMenuItem(70, 150, 'Report', 'report');
+        const setting = createMenuItem(170, 150, 'Setting', 'music');
+
+        bottomPanel.add([fullScreenBtn.item, help.item, report.item, setting.item]);
+        this.sideMenuUI.add([topPanel, bottomPanel]);
     }
+
 
     private toggleSideMenu() {
         this.isSideMenuOpen = !this.isSideMenuOpen;
