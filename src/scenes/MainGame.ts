@@ -36,6 +36,8 @@ interface SpawnOptions {
 export default class MainGame extends Phaser.Scene {
     private uiFontFamily: string = '"Trebuchet MS", "Arial Black", Verdana, Arial, sans-serif';
     private playerCannon!: Phaser.GameObjects.Sprite;
+    private cannonBaseY: number = 0;   // Posisi Y asal cannon — untuk mencegah drift saat recoil
+    private p2CannonBaseY: number = 0; // Posisi Y asal cannon player 2
     private bullets!: Phaser.Physics.Arcade.Group;
     private fishGroup!: Phaser.Physics.Arcade.Group;
     private score: number = 2000;
@@ -608,6 +610,7 @@ export default class MainGame extends Phaser.Scene {
         this.playerCannon.setOrigin(0.5, 0.6);
         this.playerCannon.setScale(1.4);
         this.playerCannon.setDepth(20);
+        this.cannonBaseY = h - 55; // Simpan posisi Y asal
 
         // Player 2 Dummy Cannon
         const p2Cannon = this.add.sprite(w - 250, h - 55, 'cannon1');
@@ -616,6 +619,7 @@ export default class MainGame extends Phaser.Scene {
         p2Cannon.setDepth(20);
         p2Cannon.setRotation(0);
         p2Cannon.setName('p2_cannon');
+        this.p2CannonBaseY = h - 55; // Simpan posisi Y asal
 
         // --- USER LAIN (KIRI & KANAN) ---
         // dummy cannons removed
@@ -676,7 +680,9 @@ export default class MainGame extends Phaser.Scene {
                     const p2Cannon = this.children.getByName('p2_cannon') as Phaser.GameObjects.Sprite;
                     if (p2Cannon) {
                         p2Cannon.setRotation(angle + Math.PI / 2);
-                        this.tweens.add({ targets: p2Cannon, y: p2Cannon.y + 12, duration: 50, yoyo: true });
+                        // Selalu tween dari baseY agar tidak drift ke bawah
+                        p2Cannon.y = this.p2CannonBaseY;
+                        this.tweens.add({ targets: p2Cannon, y: this.p2CannonBaseY + 12, duration: 50, yoyo: true });
                     }
                     
                     const muzzleX = p2CannonX + Math.cos(angle) * 60;
@@ -2620,13 +2626,17 @@ export default class MainGame extends Phaser.Scene {
             this.fireSingleBullet(muzzleX, muzzleY, angle, isTargeted, 'local_p1');
         }
 
-        this.tweens.add({ targets: cannon, y: cannon.y + 12, duration: 50, yoyo: true });
+        // Recoil cannon: selalu dari baseY supaya tidak drift ke bawah layar
+        cannon.y = this.cannonBaseY;
+        this.tweens.killTweensOf(cannon); // Batalkan tween sebelumnya yang belum selesai
+        this.tweens.add({ targets: cannon, y: this.cannonBaseY + 12, duration: 50, yoyo: true });
 
         // Efek Api (Muzzle Flash) menggunakan tembakan.png (muzzle)
         const flash = this.add.sprite(muzzleX, muzzleY, 'muzzle').setDepth(41).setRotation(angle);
         flash.setScale(0.2); // Diperbesar kembali sesuai permintaan
         this.tweens.add({ targets: flash, scale: 0.6, alpha: 0, duration: 100, onComplete: () => flash.destroy() });
     }
+
 
     private fireTorpedo(
         x: number,

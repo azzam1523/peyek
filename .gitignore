@@ -26,6 +26,6 @@ dist-ssr
 # Project specific ignores
 downloaded_assets_fish3/
 scratch/
-public/assets_mentah/
+# public/assets_mentah/
 backend/node_modules/
 .antigravity_rules.md
