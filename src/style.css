@@ -46,7 +46,6 @@ body {
 /* Canvas: JS yang mengatur transform-nya secara langsung */
 canvas {
   display: block;
-  box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
   transform-origin: center center;
   transition: transform 0.3s ease;
 }

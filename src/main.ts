@@ -43,6 +43,7 @@ const GAME_H = 720;
 const applyGameScale = () => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    const isPortrait = vh > vw;
 
     // Tunggu canvas Phaser tersedia
     const canvas = document.querySelector<HTMLCanvasElement>('#app canvas');
@@ -51,18 +52,25 @@ const applyGameScale = () => {
         return;
     }
 
-    // Reset semua style
+    // Reset style dasar
     canvas.style.position = 'absolute';
     canvas.style.top = '50%';
     canvas.style.left = '50%';
 
-    // Selalu scale landscape (1280×720) agar fit di layar,
-    // baik landscape maupun portrait — letterbox otomatis terbentuk.
-    // Portrait: scale by width → hitam atas/bawah (seperti gambar referensi)
-    // Landscape: scale by width/height mana yang lebih kecil → fullscreen
-    const scale = Math.min(vw / GAME_W, vh / GAME_H);
-    canvas.style.transform = `translate(-50%, -50%) scale(${scale})`;
+    if (isPortrait) {
+        // Mode Portrait Mobile: Tetap seperti sebelumnya (Letterbox di tengah)
+        // Agar terlihat seperti landscape yang pas di lebar HP
+        const scale = vw / GAME_W; // Scale berdasarkan lebar layar
+        canvas.style.transform = `translate(-50%, -50%) scale(${scale})`;
+    } else {
+        // Mode Desktop/Laptop (Landscape): FULL layar tanpa bar hitam
+        // Kita paksa scale X dan Y mengikuti ukuran window agar mengisi penuh
+        const scaleX = vw / GAME_W;
+        const scaleY = vh / GAME_H;
+        canvas.style.transform = `translate(-50%, -50%) scale(${scaleX}, ${scaleY})`;
+    }
 };
+
 
 
 applyGameScale();
