@@ -1,0 +1,168 @@
+==================================================================
+ACTION FISH SHOOTER - WEBSOCKET SETUP (IMPLEMENTATION)
+==================================================================
+
+Dokumen ini khusus untuk implementasi websocket agar mudah di-handover.
+
+------------------------------------------------------------------
+1) ARSITEKTUR WEBSOCKET
+------------------------------------------------------------------
+- Frontend: Vite + Phaser (default :5173)
+- Backend: Node.js + Express + Socket.IO + SQLite (default :3000)
+- Transport realtime: Socket.IO websocket
+- DB backend: backend/game_database.sqlite
+
+Endpoint backend:
+- GET http://localhost:3000/health
+- GET http://localhost:3000/metrics
+- GET http://localhost:3000/audit/verify
+- GET http://localhost:3000/admin (Admin UI, token-protected jika ADMIN_TOKEN di-set)
+
+------------------------------------------------------------------
+2) ENV YANG DIPAKAI
+------------------------------------------------------------------
+A. Frontend (`.env` di root)
+- VITE_SOCKET_URL=http://localhost:3000
+- VITE_SOCKET_AUTH_TOKEN=
+
+B. Backend (`backend/.env`)
+- PORT=3000
+- CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+- SOCKET_AUTH_TOKEN=
+- REQUIRE_SOCKET_TOKEN=false
+- SOCKET_AUTH_MODE=HYBRID
+- SOCKET_JWT_SECRET=
+- SOCKET_JWT_ISSUER=
+- REQUIRE_SECURE_TRANSPORT=false
+- ALLOW_INSECURE_LOCALHOST=true
+- ADMIN_TOKEN=
+
+Catatan backend env:
+- Backend akan membaca `backend/.env` secara otomatis saat start (tanpa library dotenv).
+
+Auth mode:
+- STATIC: pakai `SOCKET_AUTH_TOKEN`
+- JWT: pakai JWT HS256 (`exp` wajib)
+- HYBRID: menerima STATIC atau JWT
+
+------------------------------------------------------------------
+3) CARA JALANKAN (DEV)
+------------------------------------------------------------------
+A. Backend
+1. cd D:\Test\ActionFishShooter\backend
+2. copy .env.example .env
+3. npm run dev
+
+B. Frontend
+1. cd D:\Test\ActionFishShooter
+2. copy .env.example .env
+3. npm run dev
+4. Buka: http://localhost:5173/?userId=P1
+
+Multi-player test:
+- http://localhost:5173/?userId=P2
+- http://localhost:5173/?userId=P3
+
+Jika token aktif:
+- http://localhost:5173/?userId=P1&token=YOUR_TOKEN
+
+------------------------------------------------------------------
+4) HANDSHAKE KONEKSI
+------------------------------------------------------------------
+Client kirim query saat connect:
+- userId: string
+- token: string (opsional, sesuai mode auth)
+
+Sumber token frontend:
+1. query URL `token`
+2. fallback ke `VITE_SOCKET_AUTH_TOKEN`
+
+Jika reject, server emit:
+- `action-rejected` dengan reason terkait
+
+------------------------------------------------------------------
+5) EVENT CLIENT -> SERVER
+------------------------------------------------------------------
+1. `shoot`
+Payload:
+{
+  fishId: string,
+  betAmount: number,
+  isTorpedo?: boolean
+}
+
+2. `activate-lucky-orb`
+Payload:
+{
+  betAmount?: number,
+  impactX?: number,
+  impactY?: number
+}
+
+3. `fish-escaped`
+Payload:
+{
+  fishId: string
+}
+
+------------------------------------------------------------------
+6) EVENT SERVER -> CLIENT
+------------------------------------------------------------------
+Session/Lobby:
+- `init-game`
+- `player-joined`
+- `player-left`
+- `seat-balance-updated`
+
+World:
+- `clear-all-fish`
+- `current-fish`
+- `spawn-fish`
+- `stage-changed`
+
+Gameplay outcome:
+- `shoot-result`
+- `fish-killed`
+- `lucky-orb-cast`
+- `jackpot-update`
+- `jackpot-win`
+- `energy-update`
+
+Security/validation:
+- `action-rejected`
+
+------------------------------------------------------------------
+7) RINGKASAN LOGIKA SERVER
+------------------------------------------------------------------
+- Server adalah source of truth saldo, hp ikan, kill, payout.
+- Event `shoot`:
+  1. validasi rate limit + bet
+  2. potong balance + tambah energy
+  3. hitung damage ke HP ikan
+  4. jika ikan mati: hitung win/jackpot, update balance, emit `fish-killed`
+  5. kirim `shoot-result`
+- Event `activate-lucky-orb`:
+  1. validasi rate limit + energy + bet
+  2. reset energy
+  3. hitung lucky hit di server
+  4. kill ikan terpilih, update balance, emit `lucky-orb-cast` dan `fish-killed`
+
+------------------------------------------------------------------
+8) REASON `action-rejected` / `shoot-result.rejected`
+------------------------------------------------------------------
+Kemungkinan reason:
+- UNAUTHORIZED_SOCKET_TOKEN
+- MISSING_AUTH_TOKEN
+- JWT_USER_EMPTY
+- JWT_USER_MISMATCH
+- INSECURE_TRANSPORT
+- RATE_LIMIT_SHOOT
+- RATE_LIMIT_ORB
+- INVALID_BET_AMOUNT
+- INVALID_ORB_BET
+- INSUFFICIENT_BALANCE
+
+==================================================================
+Update terakhir: 11 Mei 2026
+Status: websocket implementation handover
+==================================================================

@@ -32,7 +32,6 @@ body {
   align-items: center;
 }
 
-/* App container selalu memenuhi layar */
 #app {
   width: 100vw;
   height: 100vh;
@@ -43,7 +42,6 @@ body {
   position: relative;
 }
 
-/* Canvas: JS yang mengatur transform-nya secara langsung */
 canvas {
   display: block;
   transform-origin: center center;

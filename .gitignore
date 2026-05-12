@@ -29,3 +29,9 @@ scratch/
 # public/assets_mentah/
 backend/node_modules/
 .antigravity_rules.md
+
+# Env files
+.env
+.env.*
+!.env.example
+!backend/.env.example

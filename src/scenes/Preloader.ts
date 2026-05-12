@@ -46,11 +46,8 @@ export default class Preloader extends Phaser.Scene {
         this.load.on('loaderror', (file: any) => {
             console.error('Error loading file:', file.key, file.src);
         });
-
-        // Assets
         this.load.image('background', 'assets/background.png');
         this.load.image('game_bg', 'assets/coolfish/game_bg.jpg');
-        // Audio (Sound Effects) - Menggunakan Aset Lokal
         this.load.audio('snd_shoot', 'assets/sound/pistol.wav');
         this.load.audio('snd_triple', 'assets/sound/shotgun.wav');
         this.load.audio('snd_hit', 'assets/sound/squit.wav');
@@ -62,35 +59,27 @@ export default class Preloader extends Phaser.Scene {
         this.load.audio('snd_explosion', 'assets/sound/explosion.mp3');
         this.load.audio('bgm', 'assets/sound/backsound.mp3');
         this.load.audio('bgm_golden_shark', 'assets/sound/golden_shark_enter.mp3');
-        // Target laser fire SFX
+        this.load.audio('snd_golden_shark_spawn', 'assets/sound/sound_raja_masuk.mp3');
         this.load.audio('snd_laser_fire_start', 'assets/sound/sound_lazer.mp3');
         this.load.audio('snd_laser_fire_loop', 'assets/sound/sound_lazer2.mp3');
         this.load.audio('snd_incoming_golden_shark', 'assets/sound/incoming_golden_shark.mp3');
-        this.load.audio('snd_scene_wave', 'assets_mentah/sound_ganti_scene.mp3');
-        this.load.audio('snd_scene_crash', 'assets_mentah/sound_ganti_scene2.mp3');
-
-        // Bullet
+        this.load.audio('snd_scene_wave', 'assets/sound/sound_ganti_scene.mp3');
+        this.load.audio('snd_scene_crash', 'assets/sound/sound_ganti_scene2.mp3');
         this.load.image('bullet', 'assets/coolfish/muzzle.png');
         this.load.image('bullet_laser', 'assets/animations/lazer_blue.png');
         this.load.image('muzzle', 'assets/coolfish/muzzle.png');
         this.load.image('explosion_v2', 'assets/coolfish/explosion_v2.png');
-        
-        // Misc
         this.load.image('web', 'assets/coolfish/web.png');
         this.load.spritesheet('coinAni1', 'assets/coolfish/coinAni1.png', { frameWidth: 60, frameHeight: 60 });
         this.load.spritesheet('coinAni2', 'assets/coolfish/coinAni2.png', { frameWidth: 60, frameHeight: 60 });
         this.load.image('bottomBar', 'assets/coolfish/bottomBar.png');
-
-        // Coolfish Cannons (Spritesheets)
         this.load.spritesheet('cannon1', 'assets/coolfish/cannon1.png', { frameWidth: 74, frameHeight: 74 });
         this.load.spritesheet('cannon2', 'assets/coolfish/cannon2.png', { frameWidth: 74, frameHeight: 76 });
         this.load.spritesheet('cannon3', 'assets/coolfish/cannon3.png', { frameWidth: 74, frameHeight: 76 });
         this.load.spritesheet('cannon4', 'assets/coolfish/cannon4.png', { frameWidth: 74, frameHeight: 83 });
         this.load.spritesheet('cannon5', 'assets/coolfish/cannon5.png', { frameWidth: 74, frameHeight: 85 });
-        this.load.spritesheet('cannon6', 'assets/coolfish/cannon6.png', { frameWidth: 74, frameHeight: 90 });
+        this.load.spritesheet('cannon6', 'assets/coolfish/cannon7.png', { frameWidth: 74, frameHeight: 90 });
         this.load.spritesheet('cannon7', 'assets/coolfish/cannon7.png', { frameWidth: 74, frameHeight: 94 });
-
-        // Coolfish Spritesheets
         this.load.spritesheet('fish1', 'assets/coolfish/fish1.png', { frameWidth: 55, frameHeight: 37 });
         this.load.spritesheet('fish2', 'assets/coolfish/fish2.png', { frameWidth: 78, frameHeight: 64 });
         this.load.spritesheet('fish3', 'assets/coolfish/fish3.png', { frameWidth: 72, frameHeight: 56 });
@@ -104,17 +93,19 @@ export default class Preloader extends Phaser.Scene {
         this.load.spritesheet('shark1', 'assets/coolfish/shark1.png', { frameWidth: 509, frameHeight: 270 });
         this.load.spritesheet('shark2', 'assets/coolfish/shark2.png', { frameWidth: 516, frameHeight: 273 });
         this.load.image('sharkjumbo_v2', 'assets/coolfish/sharkjumbo.png');
-
-        // Assets Mentah
-        this.load.image('icon_frozen', 'assets_mentah/30.webp');
-        this.load.image('icon_auto', 'assets_mentah/31.webp');
-        this.load.image('icon_torpedo', 'assets_mentah/32.webp');
-        this.load.image('icon_target', 'assets_mentah/35.webp');
-        this.load.image('joy_hall', 'assets_mentah/36.webp');
-        this.load.image('btn_play', 'assets_mentah/28.webp');
-        this.load.image('bg_mentah', 'assets_mentah/bg1.webp');
-        this.load.image('big_bomb', 'assets_mentah/ledakan.png');
-        this.load.image('ganti_scene', 'assets_mentah/ganti_scene.webp');
+        this.load.image('icon_frozen', 'assets/coolfish/30.webp');
+        this.load.image('icon_auto', 'assets/coolfish/31.webp');
+        this.load.image('icon_torpedo', 'assets/coolfish/32.webp');
+        this.load.image('icon_target', 'assets/coolfish/35.webp');
+        this.load.image('cannon_plus', 'assets/coolfish/cannonPlus.png');
+        this.load.image('cannon_minus', 'assets/coolfish/cannonMinus.png');
+        this.load.image('joy_hall', 'assets/coolfish/36.webp');
+        this.load.image('btn_play', 'assets/coolfish/28.webp');
+        this.load.image('bg_mentah', 'assets/coolfish/bg1.webp');
+        this.load.image('big_bomb', 'assets/coolfish/ledakan.png');
+        this.load.image('ganti_scene', 'assets/coolfish/ganti_scene.webp');
+        this.load.spritesheet('torpedo_projectile_custom', 'assets/coolfish/torpedo_projectile_sheet.png', { frameWidth: 100, frameHeight: 80 });
+        this.load.spritesheet('torpedo_explosion_custom', 'assets/coolfish/torpedo_explosion_sheet.png', { frameWidth: 199, frameHeight: 187 });
     }
 
     create() {
