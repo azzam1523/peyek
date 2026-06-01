@@ -35,3 +35,8 @@ backend/node_modules/
 .env.*
 !.env.example
 !backend/.env.example
+
+# Databases
+*.sqlite
+*.sqlite3
+*.db

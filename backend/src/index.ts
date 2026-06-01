@@ -45,7 +45,9 @@ const parseCorsOrigins = (): string[] => {
 const ALLOWED_CORS_ORIGINS = parseCorsOrigins();
 const SOCKET_AUTH_TOKEN = process.env.SOCKET_AUTH_TOKEN?.trim() || '';
 const SOCKET_JWT_SECRET = process.env.SOCKET_JWT_SECRET?.trim() || '';
+const SOCKET_JWT_SECRET_EFFECTIVE = SOCKET_JWT_SECRET || 'dev_local_socket_secret_change_me';
 const SOCKET_JWT_ISSUER = process.env.SOCKET_JWT_ISSUER?.trim() || '';
+const AUTH_JWT_EXP_SECONDS = Number(process.env.AUTH_JWT_EXP_SECONDS || 28800);
 const SOCKET_AUTH_MODE_RAW = process.env.SOCKET_AUTH_MODE?.trim().toUpperCase() || 'HYBRID';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN?.trim() || '';
 const REQUIRE_SOCKET_TOKEN = process.env.REQUIRE_SOCKET_TOKEN
@@ -82,11 +84,28 @@ const io = new Server(httpServer, {
     },
     maxHttpBufferSize: 64 * 1024
 });
+
+app.use(express.json({ limit: '128kb' }));
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && ALLOWED_CORS_ORIGINS.includes(origin)) {
+        res.header('Access-Control-Allow-Origin', origin);
+    }
+    res.header('Vary', 'Origin');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-game-token');
+    if (req.method === 'OPTIONS') {
+        res.sendStatus(204);
+        return;
+    }
+    next();
+});
 const DB_PATH = path.resolve(__dirname, '..', 'game_database.sqlite');
 const db = new sqlite3.Database(DB_PATH);
 
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS users (userId TEXT PRIMARY KEY, balance REAL DEFAULT ${GAME_CONFIG.INITIAL_BALANCE}, energy REAL DEFAULT 0, lastLogin INTEGER)`);
+    db.run(`CREATE TABLE IF NOT EXISTS auth_users (userId TEXT PRIMARY KEY, username TEXT UNIQUE, passwordHash TEXT NOT NULL, createdAt INTEGER, updatedAt INTEGER)`);
     db.run(`CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, timestamp INTEGER, userId TEXT, type TEXT, amount REAL, balanceBefore REAL, balanceAfter REAL, details TEXT)`);
 });
 
@@ -233,6 +252,199 @@ function parseTimeParam(value: unknown): number | null {
     const dt = Date.parse(raw);
     return Number.isFinite(dt) ? dt : null;
 }
+
+function normalizeUserId(input: unknown): string {
+    return String(input || '').trim();
+}
+
+function isValidUserId(userId: string): boolean {
+    return /^[a-zA-Z0-9_-]{3,32}$/.test(userId);
+}
+
+function normalizeUsername(input: unknown): string {
+    return String(input || '').trim().toLowerCase();
+}
+
+function isValidUsername(username: string): boolean {
+    return /^[a-z0-9_.-]{3,32}$/.test(username);
+}
+
+async function ensureAuthUsersSchema(): Promise<void> {
+    const columns = await dbAll("PRAGMA table_info(auth_users)", []);
+    const hasUsername = columns.some((col) => String(col?.name || '').toLowerCase() === 'username');
+    if (!hasUsername) {
+        await dbRun("ALTER TABLE auth_users ADD COLUMN username TEXT", []);
+    }
+    await dbRun("UPDATE auth_users SET username = userId WHERE username IS NULL OR TRIM(username) = ''", []);
+    await dbRun("CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_users_username ON auth_users(username)", []);
+}
+
+async function generateUniqueUserId(): Promise<string> {
+    for (let i = 0; i < 30; i++) {
+        const candidate = `P${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
+        const exists = await dbGet("SELECT userId FROM auth_users WHERE userId = ?", [candidate]);
+        if (!exists) {
+            return candidate;
+        }
+    }
+    throw new Error('GENERATE_USER_ID_FAILED');
+}
+
+function hashPassword(password: string): string {
+    return crypto.createHash('sha256').update(password).digest('hex');
+}
+
+function readBearerToken(req: express.Request): string {
+    const auth = typeof req.headers.authorization === 'string' ? req.headers.authorization.trim() : '';
+    return auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
+}
+
+function issueSocketJwt(userId: string): string {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const expSec = nowSec + Math.max(60, AUTH_JWT_EXP_SECONDS);
+    const header = { alg: 'HS256', typ: 'JWT' };
+    const payload: JwtPayload = {
+        sub: userId,
+        userId,
+        iat: nowSec,
+        exp: expSec,
+        iss: SOCKET_JWT_ISSUER || 'actionfish-local'
+    };
+    const encodedHeader = base64UrlEncode(JSON.stringify(header));
+    const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+    const message = `${encodedHeader}.${encodedPayload}`;
+    const signature = base64UrlEncode(
+        crypto.createHmac('sha256', SOCKET_JWT_SECRET_EFFECTIVE).update(message).digest()
+    );
+    return `${message}.${signature}`;
+}
+
+async function ensureUserExists(userId: string): Promise<{ userId: string; balance: number; energy: number; lastLogin: number }> {
+    const now = Date.now();
+    const existing = await dbGet("SELECT userId, balance, energy, lastLogin FROM users WHERE userId = ?", [userId]);
+    if (!existing) {
+        await dbRun("INSERT INTO users (userId, balance, energy, lastLogin) VALUES (?, ?, ?, ?)", [userId, GAME_CONFIG.INITIAL_BALANCE, 0, now]);
+        return { userId, balance: GAME_CONFIG.INITIAL_BALANCE, energy: 0, lastLogin: now };
+    }
+    await dbRun("UPDATE users SET lastLogin = ? WHERE userId = ?", [now, userId]);
+    return {
+        userId: String(existing.userId),
+        balance: Number(existing.balance || 0),
+        energy: Number(existing.energy || 0),
+        lastLogin: now
+    };
+}
+
+app.post('/auth/register', async (req, res) => {
+    try {
+        const username = normalizeUsername(req.body?.username ?? req.body?.userId);
+        const password = String(req.body?.password || '');
+        if (!isValidUsername(username)) {
+            res.status(400).json({ ok: false, error: 'INVALID_USERNAME' });
+            return;
+        }
+        if (password.length < 4 || password.length > 64) {
+            res.status(400).json({ ok: false, error: 'INVALID_PASSWORD' });
+            return;
+        }
+
+        const existingAuth = await dbGet("SELECT userId FROM auth_users WHERE username = ?", [username]);
+        if (existingAuth) {
+            res.status(409).json({ ok: false, error: 'USERNAME_ALREADY_EXISTS' });
+            return;
+        }
+
+        const userId = await generateUniqueUserId();
+        const now = Date.now();
+        await dbRun(
+            "INSERT INTO auth_users (userId, username, passwordHash, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)",
+            [userId, username, hashPassword(password), now, now]
+        );
+        const user = await ensureUserExists(userId);
+        const token = issueSocketJwt(userId);
+        res.json({
+            ok: true,
+            data: {
+                token,
+                expiresIn: Math.max(60, AUTH_JWT_EXP_SECONDS),
+                user: { userId: user.userId, username, balance: user.balance, energy: user.energy }
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'REGISTER_FAILED' });
+    }
+});
+
+app.post('/auth/login', async (req, res) => {
+    try {
+        const username = normalizeUsername(req.body?.username ?? req.body?.userId);
+        const password = String(req.body?.password || '');
+        if (!isValidUsername(username)) {
+            res.status(400).json({ ok: false, error: 'INVALID_USERNAME' });
+            return;
+        }
+
+        const authUser = await dbGet("SELECT userId, username, passwordHash FROM auth_users WHERE username = ?", [username]);
+        if (!authUser) {
+            res.status(404).json({ ok: false, error: 'USER_NOT_FOUND' });
+            return;
+        }
+        const valid = safeCompare(String(authUser.passwordHash || ''), hashPassword(password));
+        if (!valid) {
+            res.status(401).json({ ok: false, error: 'INVALID_CREDENTIALS' });
+            return;
+        }
+
+        const userId = String(authUser.userId || '').trim();
+        const user = await ensureUserExists(userId);
+        const token = issueSocketJwt(userId);
+        res.json({
+            ok: true,
+            data: {
+                token,
+                expiresIn: Math.max(60, AUTH_JWT_EXP_SECONDS),
+                user: { userId: user.userId, username: String(authUser.username || username), balance: user.balance, energy: user.energy }
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'LOGIN_FAILED' });
+    }
+});
+
+app.get('/auth/me', async (req, res) => {
+    try {
+        const token = readBearerToken(req) || (typeof req.query.token === 'string' ? req.query.token.trim() : '');
+        if (!token) {
+            res.status(401).json({ ok: false, error: 'MISSING_TOKEN' });
+            return;
+        }
+        const payload = verifySocketJwt(token);
+        if (!payload) {
+            res.status(401).json({ ok: false, error: 'INVALID_TOKEN' });
+            return;
+        }
+        const userId = String(payload.sub || payload.userId || '').trim();
+        if (!userId) {
+            res.status(401).json({ ok: false, error: 'INVALID_TOKEN_PAYLOAD' });
+            return;
+        }
+        const user = await ensureUserExists(userId);
+        const authUser = await dbGet("SELECT username FROM auth_users WHERE userId = ?", [userId]);
+        res.json({
+            ok: true,
+            data: {
+                user: {
+                    userId: user.userId,
+                    username: String(authUser?.username || ''),
+                    balance: user.balance,
+                    energy: user.energy
+                }
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'AUTH_ME_FAILED' });
+    }
+});
 
 app.get('/admin', (req, res) => {
     if (!requireAdmin(req, res)) return;
@@ -497,7 +709,6 @@ function safeCompare(left: string, right: string): boolean {
 }
 
 function verifySocketJwt(token: string): JwtPayload | null {
-    if (!SOCKET_JWT_SECRET) return null;
     const parts = token.split('.');
     if (parts.length !== 3) return null;
     const [encodedHeader, encodedPayload, signature] = parts;
@@ -508,7 +719,7 @@ function verifySocketJwt(token: string): JwtPayload | null {
 
         const message = `${encodedHeader}.${encodedPayload}`;
         const expected = base64UrlEncode(
-            crypto.createHmac('sha256', SOCKET_JWT_SECRET).update(message).digest()
+            crypto.createHmac('sha256', SOCKET_JWT_SECRET_EFFECTIVE).update(message).digest()
         );
         if (!safeCompare(expected, signature)) return null;
 
@@ -1284,6 +1495,7 @@ setInterval(() => {
 }, GAME_CONFIG.SPAWN_INTERVAL_MS);
 
 async function bootstrap() {
+    await ensureAuthUsersSchema();
     await ensureTransactionHashColumns();
     await backfillTransactionHashes();
     httpServer.listen(PORT, () => console.log(`Server iTech Labs STABLE Ready :${PORT}`));

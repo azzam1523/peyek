@@ -90,6 +90,18 @@ export default class MainGame extends Phaser.Scene {
     private pendingServerBetAmount: number = 0;
     private activeLocalTorpedoTargetCounts: Map<string, number> = new Map();
     private deferredLocalTorpedoKills: Map<string, any> = new Map();
+    private injectedNetwork: NetworkManager | null = null;
+
+    private pendingInitData: any = null;
+
+    init(data: any) {
+        if (data?.network) {
+            this.injectedNetwork = data.network as NetworkManager;
+        }
+        if (data?.init) {
+            this.pendingInitData = data.init;
+        }
+    }
 
     private safePlaySound(key: string, config?: any) {
         if (this.isTargetMode && key === 'snd_hit') {
@@ -417,8 +429,19 @@ export default class MainGame extends Phaser.Scene {
                 loop: true
             });
         } else {
-            this.network = new NetworkManager(this);
-            this.network.connect(SOCKET_SERVER_URL);
+            if (this.injectedNetwork) {
+                this.network = this.injectedNetwork;
+                this.network.setScene(this);
+                this.injectedNetwork = null;
+                
+                if (this.pendingInitData) {
+                    this.handleInitGame(this.pendingInitData);
+                    this.pendingInitData = null;
+                }
+            } else {
+                this.network = new NetworkManager(this);
+                this.network.connect(SOCKET_SERVER_URL);
+            }
         }
 
         this.laserBeamSegments = [];

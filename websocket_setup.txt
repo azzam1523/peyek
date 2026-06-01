@@ -17,6 +17,44 @@ Endpoint backend:
 - GET http://localhost:3000/metrics
 - GET http://localhost:3000/audit/verify
 - GET http://localhost:3000/admin (Admin UI, token-protected jika ADMIN_TOKEN di-set)
+- POST http://localhost:3000/auth/register
+- POST http://localhost:3000/auth/login
+- GET http://localhost:3000/auth/me
+
+Kontrak API auth terbaru:
+- `POST /auth/register`
+  Request:
+  {
+    "username": "player_alpha",
+    "password": "1234abcd"
+  }
+  Response sukses:
+  {
+    "ok": true,
+    "data": {
+      "token": "<jwt>",
+      "expiresIn": 28800,
+      "user": {
+        "userId": "PXXXXXXXXXX",
+        "username": "player_alpha",
+        "balance": 2000,
+        "energy": 0
+      }
+    }
+  }
+
+- `POST /auth/login`
+  Request:
+  {
+    "username": "player_alpha",
+    "password": "1234abcd"
+  }
+  Response sukses: sama seperti register
+
+- `GET /auth/me`
+  Header:
+  Authorization: Bearer <jwt>
+  Response user profile: `userId`, `username`, `balance`, `energy`
 
 ------------------------------------------------------------------
 2) ENV YANG DIPAKAI
@@ -33,6 +71,7 @@ B. Backend (`backend/.env`)
 - SOCKET_AUTH_MODE=HYBRID
 - SOCKET_JWT_SECRET=
 - SOCKET_JWT_ISSUER=
+- AUTH_JWT_EXP_SECONDS=28800
 - REQUIRE_SECURE_TRANSPORT=false
 - ALLOW_INSECURE_LOCALHOST=true
 - ADMIN_TOKEN=
@@ -44,6 +83,17 @@ Auth mode:
 - STATIC: pakai `SOCKET_AUTH_TOKEN`
 - JWT: pakai JWT HS256 (`exp` wajib)
 - HYBRID: menerima STATIC atau JWT
+
+Auth testing flow (login tanpa form platform):
+- `POST /auth/register` untuk create player + token
+- `POST /auth/login` untuk login + token
+- Token hasil auth dipakai di URL/query `?userId=...&token=...` atau langsung ke WS query
+
+Perubahan terbaru auth credential:
+- FE tidak input `userId` lagi untuk auth.
+- FE input `username + password`.
+- `userId` dibuat otomatis oleh BE saat register berhasil.
+- FE menerima `userId` dari response auth, lalu pakai `userId` itu untuk WS query.
 
 ------------------------------------------------------------------
 3) CARA JALANKAN (DEV)
@@ -57,20 +107,27 @@ B. Frontend
 1. cd D:\Test\ActionFishShooter
 2. copy .env.example .env
 3. npm run dev
-4. Buka: http://localhost:5173/?userId=P1
+4. Buka: http://localhost:5173/
 
 Multi-player test:
-- http://localhost:5173/?userId=P2
-- http://localhost:5173/?userId=P3
+- Gunakan beberapa akun `username` berbeda dari form `Daftar`.
+- Setiap akun akan mendapat `userId` unik dari BE.
 
 Jika token aktif:
-- http://localhost:5173/?userId=P1&token=YOUR_TOKEN
+- frontend menyimpan token ke session dan otomatis dipakai untuk reconnect
+- manual URL tetap bisa: `/?userId=<FROM_AUTH_RESPONSE>&token=<TOKEN>`
+
+Mini lobby testing:
+- Frontend sekarang menampilkan form `username/password` di scene Lobby
+- Tombol `CREATE PLAYER` -> `POST /auth/register`
+- Tombol `LOGIN` -> `POST /auth/login`
+- Setelah sukses, lobby connect WS dan menunggu `init-game` lalu masuk `MainGame`
 
 ------------------------------------------------------------------
 4) HANDSHAKE KONEKSI
 ------------------------------------------------------------------
 Client kirim query saat connect:
-- userId: string
+- userId: string (didapat dari response auth BE)
 - token: string (opsional, sesuai mode auth)
 
 Sumber token frontend:
@@ -135,6 +192,17 @@ Security/validation:
 7) RINGKASAN LOGIKA SERVER
 ------------------------------------------------------------------
 - Server adalah source of truth saldo, hp ikan, kill, payout.
+- Auth BE sekarang:
+  1. `/auth/register` menerima `username/password`
+  2. validasi username unik
+  3. generate `userId` otomatis di server
+  4. simpan ke `auth_users(userId, username, passwordHash, createdAt, updatedAt)`
+  5. return JWT + profile (`userId`, `username`, `balance`, `energy`)
+  6. `/auth/login` pakai `username/password`, return data sama
+- Migrasi schema BE:
+  1. kolom `username` pada `auth_users` dipastikan ada saat bootstrap
+  2. data lama di-backfill (`username = userId` jika kosong)
+  3. unique index `idx_auth_users_username` dibuat otomatis
 - Event `shoot`:
   1. validasi rate limit + bet
   2. potong balance + tambah energy
@@ -162,7 +230,31 @@ Kemungkinan reason:
 - INVALID_ORB_BET
 - INSUFFICIENT_BALANCE
 
+------------------------------------------------------------------
+9) TROUBLESHOOT CEPAT
+------------------------------------------------------------------
+1. `ERR_CONNECTION_REFUSED ws://localhost:3000`
+- backend belum jalan / port salah
+- cek: http://localhost:3000/health
+
+2. Sering `action-rejected`
+- cek mode auth di backend (`SOCKET_AUTH_MODE`)
+- cek token frontend
+- cek `REQUIRE_SOCKET_TOKEN`
+
+3. `INSECURE_TRANSPORT`
+- `REQUIRE_SECURE_TRANSPORT=true` tapi akses masih http/ws
+- Default dev: localhost diizinkan jika `ALLOW_INSECURE_LOCALHOST=true` dan `NODE_ENV` bukan `production`
+
+4. Tidak ada fish spawn
+- cek backend log
+- cek jumlah player aktif (seat)
+- cek kondisi idle cap spawn
+
+5. Saldo client tidak sinkron
+- pastikan UI update dari event server (`init-game`, `seat-balance-updated`, `shoot-result`)
+
 ==================================================================
-Update terakhir: 11 Mei 2026
-Status: websocket implementation handover
+Update terakhir: 2 Juni 2026
+Status: websocket implementation + auth username/password + auto userId + mini lobby
 ==================================================================

@@ -1,20 +1,43 @@
 import { io, Socket } from 'socket.io-client';
-import MainGame from '../scenes/MainGame';
 
 export default class NetworkManager {
     private socket!: Socket;
-    private scene: MainGame;
+    private scene: any;
+    private authOverride: { userId: string; token: string } | null = null;
 
-    constructor(scene: MainGame) {
+    constructor(scene: any) {
         this.scene = scene;
     }
 
+    public setScene(scene: any) {
+        this.scene = scene;
+    }
+
+    public setAuth(userId: string, token: string) {
+        this.authOverride = { userId, token };
+        try {
+            sessionStorage.setItem('afs_userId', userId);
+            sessionStorage.setItem('afs_token', token);
+        } catch (_err) {
+        }
+    }
+
     public connect(url: string = 'http://localhost:3000') {
+        if (this.socket && (this.socket.connected || this.socket.active)) {
+            return;
+        }
         const urlParams = new URLSearchParams(window.location.search);
-        const userId = urlParams.get('userId') || 'P1';
+        const userIdFromQuery = urlParams.get('userId') || '';
         const tokenFromQuery = urlParams.get('token') || '';
+        const userIdFromSession = (() => {
+            try { return sessionStorage.getItem('afs_userId') || ''; } catch (_err) { return ''; }
+        })();
+        const tokenFromSession = (() => {
+            try { return sessionStorage.getItem('afs_token') || ''; } catch (_err) { return ''; }
+        })();
         const tokenFromEnv = import.meta.env.VITE_SOCKET_AUTH_TOKEN?.trim() || '';
-        const token = tokenFromQuery || tokenFromEnv;
+        const userId = this.authOverride?.userId || userIdFromQuery || userIdFromSession || 'P1';
+        const token = this.authOverride?.token || tokenFromQuery || tokenFromSession || tokenFromEnv;
 
         this.socket = io(url, {
             transports: ['websocket'],
