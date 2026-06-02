@@ -112,7 +112,7 @@ export default class Lobby extends Phaser.Scene {
         this.draftPassword = '';
 
         const formHtml = `
-            <div style="width:560px;display:flex;flex-direction:column;gap:14px;">
+            <div style="width:100%;display:flex;flex-direction:column;gap:14px;">
                 <div style="display:flex;gap:10px;">
                     <button id="afs-tab-login" type="button"
                         style="flex:1;height:40px;border:1px solid #00d5ff;border-radius:10px;background:rgba(0,205,255,0.24);color:#e9f3ff;font:800 14px ${UI_FONT_FAMILY};cursor:pointer;">LOGIN</button>
@@ -150,21 +150,23 @@ export default class Lobby extends Phaser.Scene {
         this.formRootEl = document.createElement('div');
         this.formRootEl.className = 'afs-ui-overlay';
         this.formRootEl.style.position = 'absolute';
-        this.formRootEl.style.top = '50%';
-        this.formRootEl.style.left = '50%';
-        this.formRootEl.style.width = '1280px';
-        this.formRootEl.style.height = '720px';
-        this.formRootEl.style.transform = 'translate(-50%, -50%)';
-        this.formRootEl.style.transformOrigin = 'center center';
+        this.formRootEl.style.top = '0';
+        this.formRootEl.style.left = '0';
+        this.formRootEl.style.width = '100%';
+        this.formRootEl.style.height = '100%';
+        this.formRootEl.style.display = 'flex';
+        this.formRootEl.style.alignItems = 'center';
+        this.formRootEl.style.justifyContent = 'center';
         this.formRootEl.style.pointerEvents = 'none';
         this.formRootEl.style.zIndex = '30';
 
         const panelEl = document.createElement('div');
-        panelEl.style.position = 'absolute';
-        panelEl.style.left = '360px';
-        panelEl.style.top = '238px';
-        panelEl.style.width = '560px';
+        panelEl.style.width = '100%';
+        panelEl.style.maxWidth = '560px';
+        panelEl.style.padding = '0 20px';
+        panelEl.style.boxSizing = 'border-box';
         panelEl.style.pointerEvents = 'auto';
+        panelEl.style.marginTop = '50px';
         panelEl.innerHTML = formHtml;
         this.formRootEl.appendChild(panelEl);
         appRoot.appendChild(this.formRootEl);
