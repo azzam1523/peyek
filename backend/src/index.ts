@@ -7,6 +7,7 @@ import fs from 'fs';
 import sqlite3 from 'sqlite3';
 import { GAME_CONFIG, FISH_CONFIGS, STAGES, FishCategory } from './config';
 import { ADMIN_HTML as ADMIN_DASHBOARD_HTML } from './admin_html';
+import { operatorApi } from './OperatorApiClient';
 
 function loadEnvFileIfPresent() {
     const envPath = path.resolve(__dirname, '..', '.env');
@@ -354,13 +355,29 @@ app.post('/auth/register', async (req, res) => {
             return;
         }
 
-        const userId = await generateUniqueUserId();
+        // Call Operator API to create player
+        let operatorPlayerId = '';
+        try {
+            const operatorRes = await operatorApi.createPlayer(username);
+            if (!operatorRes.success || !operatorRes.data?.id) {
+                res.status(500).json({ ok: false, error: 'OPERATOR_CREATE_FAILED' });
+                return;
+            }
+            operatorPlayerId = operatorRes.data.id;
+        } catch (err) {
+            console.error('Operator API Error:', err);
+            res.status(500).json({ ok: false, error: 'OPERATOR_API_UNAVAILABLE' });
+            return;
+        }
+
+        const userId = operatorPlayerId;
         const now = Date.now();
         await dbRun(
             "INSERT INTO auth_users (userId, username, passwordHash, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)",
             [userId, username, hashPassword(password), now, now]
         );
         const user = await ensureUserExists(userId);
+        
         const token = issueSocketJwt(userId);
         res.json({
             ok: true,
@@ -371,6 +388,7 @@ app.post('/auth/register', async (req, res) => {
             }
         });
     } catch (error) {
+        console.error(error);
         res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'REGISTER_FAILED' });
     }
 });
@@ -396,7 +414,24 @@ app.post('/auth/login', async (req, res) => {
         }
 
         const userId = String(authUser.userId || '').trim();
-        const user = await ensureUserExists(userId);
+        let user = await ensureUserExists(userId);
+
+        // Fetch real-time balance from Operator API
+        try {
+            const infoRes = await operatorApi.checkInfo(userId);
+            if (infoRes.success && infoRes.data) {
+                // Update local balance to match Operator API
+                const realBalance = Number(infoRes.data.balance || 0);
+                await dbRun("UPDATE users SET balance = ? WHERE userId = ?", [realBalance, userId]);
+                user.balance = realBalance;
+            }
+        } catch (err) {
+            console.error('Operator API Check Info Error:', err);
+            // We can choose to fail login if operator is down, or proceed with local balance. Let's fail for safety.
+            res.status(500).json({ ok: false, error: 'OPERATOR_API_UNAVAILABLE' });
+            return;
+        }
+
         const token = issueSocketJwt(userId);
         res.json({
             ok: true,
@@ -407,6 +442,7 @@ app.post('/auth/login', async (req, res) => {
             }
         });
     } catch (error) {
+        console.error(error);
         res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'LOGIN_FAILED' });
     }
 });
@@ -1156,7 +1192,42 @@ io.on('connection', async (socket) => {
             return;
         }
 
-        const balanceAfterBet = user.balance - betAmount;
+        // Call Operator API to withdraw bet
+        let operatorBalance = user.balance;
+        try {
+            const withdrawRes = await operatorApi.withdraw(userId, betAmount, `bet-${Date.now()}-${secureRandom()}`);
+            if (!withdrawRes.success) {
+                metrics.rejectedActions += 1;
+                incrementReasonCounter(metrics.rejectByReason, 'OPERATOR_WITHDRAW_FAILED');
+                socket.emit('shoot-result', {
+                    fishId: data.fishId,
+                    killed: false,
+                    rejected: true,
+                    reason: 'OPERATOR_WITHDRAW_FAILED',
+                    newBalance: user.balance,
+                    betAmount
+                });
+                return;
+            }
+            if (withdrawRes.data && typeof withdrawRes.data.balance === 'number') {
+                operatorBalance = withdrawRes.data.balance;
+            } else {
+                operatorBalance -= betAmount;
+            }
+        } catch (err) {
+            console.error('Operator Withdraw Error:', err);
+            socket.emit('shoot-result', {
+                fishId: data.fishId,
+                killed: false,
+                rejected: true,
+                reason: 'OPERATOR_API_ERROR',
+                newBalance: user.balance,
+                betAmount
+            });
+            return;
+        }
+
+        const balanceAfterBet = operatorBalance;
         const newEnergy = Math.min(GAME_CONFIG.ELECTRIC_CANNON_THRESHOLD, user.energy + (betAmount * GAME_CONFIG.ENERGY_PER_BET_RATIO));
         
         await dbRun("UPDATE users SET balance = ?, energy = ? WHERE userId = ?", [balanceAfterBet, newEnergy, userId]);
@@ -1214,7 +1285,24 @@ io.on('connection', async (socket) => {
             }
 
             const winAmount = baseWinAmount + jackpotWinAmount;
-            const finalBalance = balanceAfterBet + winAmount;
+            
+            // Call Operator API to deposit win
+            let finalOperatorBalance = balanceAfterBet;
+            if (winAmount > 0) {
+                try {
+                    const depositRes = await operatorApi.deposit(userId, winAmount, `win-${Date.now()}-${secureRandom()}`);
+                    if (depositRes.success && depositRes.data && typeof depositRes.data.balance === 'number') {
+                        finalOperatorBalance = depositRes.data.balance;
+                    } else {
+                        finalOperatorBalance += winAmount;
+                    }
+                } catch (err) {
+                    console.error('Operator Deposit Error:', err);
+                    finalOperatorBalance += winAmount; // Optimistically update locally
+                }
+            }
+
+            const finalBalance = finalOperatorBalance;
             responseWinAmount = winAmount;
             responseJackpotWinAmount = jackpotWinAmount;
             responseJackpotTier = jackpotTier;
