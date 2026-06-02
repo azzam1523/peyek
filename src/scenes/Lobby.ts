@@ -113,6 +113,8 @@ export default class Lobby extends Phaser.Scene {
 
         const formHtml = `
             <div style="width:100%;display:flex;flex-direction:column;gap:14px;">
+                <h1 style="color:#00f2ff;text-align:center;font-family:${UI_FONT_FAMILY};margin:0 0 10px 0;font-size:32px;text-shadow: 0 2px 10px rgba(0,242,255,0.6);">Action Fish Shooter</h1>
+                <p style="color:#9fefff;text-align:center;font-family:${UI_FONT_FAMILY};margin:0 0 20px 0;font-size:16px;">Login / Daftar</p>
                 <div style="display:flex;gap:10px;">
                     <button id="afs-tab-login" type="button"
                         style="flex:1;height:40px;border:1px solid #00d5ff;border-radius:10px;background:rgba(0,205,255,0.24);color:#e9f3ff;font:800 14px ${UI_FONT_FAMILY};cursor:pointer;">LOGIN</button>
@@ -148,25 +150,29 @@ export default class Lobby extends Phaser.Scene {
             return;
         }
         this.formRootEl = document.createElement('div');
-        this.formRootEl.className = 'afs-ui-overlay';
+        this.formRootEl.className = 'afs-login-overlay';
         this.formRootEl.style.position = 'absolute';
         this.formRootEl.style.top = '0';
         this.formRootEl.style.left = '0';
-        this.formRootEl.style.width = '100%';
-        this.formRootEl.style.height = '100%';
+        this.formRootEl.style.right = '0';
+        this.formRootEl.style.bottom = '0';
         this.formRootEl.style.display = 'flex';
         this.formRootEl.style.alignItems = 'center';
         this.formRootEl.style.justifyContent = 'center';
-        this.formRootEl.style.pointerEvents = 'none';
-        this.formRootEl.style.zIndex = '30';
+        this.formRootEl.style.background = 'radial-gradient(circle at center, #0a192f 0%, #010a14 100%)';
+        this.formRootEl.style.pointerEvents = 'auto';
+        this.formRootEl.style.zIndex = '100';
 
         const panelEl = document.createElement('div');
         panelEl.style.width = '100%';
-        panelEl.style.maxWidth = '560px';
-        panelEl.style.padding = '0 20px';
+        panelEl.style.maxWidth = '400px';
+        panelEl.style.padding = '30px 20px';
         panelEl.style.boxSizing = 'border-box';
-        panelEl.style.pointerEvents = 'auto';
-        panelEl.style.marginTop = '50px';
+        panelEl.style.background = 'rgba(0, 23, 51, 0.6)';
+        panelEl.style.border = '1px solid rgba(0, 242, 255, 0.3)';
+        panelEl.style.borderRadius = '16px';
+        panelEl.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
+        panelEl.style.margin = '20px';
         panelEl.innerHTML = formHtml;
         this.formRootEl.appendChild(panelEl);
         appRoot.appendChild(this.formRootEl);
