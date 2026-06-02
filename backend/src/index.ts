@@ -254,14 +254,6 @@ function parseTimeParam(value: unknown): number | null {
     return Number.isFinite(dt) ? dt : null;
 }
 
-function normalizeUserId(input: unknown): string {
-    return String(input || '').trim();
-}
-
-function isValidUserId(userId: string): boolean {
-    return /^[a-zA-Z0-9_-]{3,32}$/.test(userId);
-}
-
 function normalizeUsername(input: unknown): string {
     return String(input || '').trim().toLowerCase();
 }
@@ -280,15 +272,35 @@ async function ensureAuthUsersSchema(): Promise<void> {
     await dbRun("CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_users_username ON auth_users(username)", []);
 }
 
-async function generateUniqueUserId(): Promise<string> {
-    for (let i = 0; i < 30; i++) {
-        const candidate = `P${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
-        const exists = await dbGet("SELECT userId FROM auth_users WHERE userId = ?", [candidate]);
-        if (!exists) {
-            return candidate;
-        }
+function readOperatorBalance(payload: any): number | null {
+    const rawBalance = payload?.data?.balance ?? payload?.data?.walletBalance ?? payload?.balance ?? null;
+    const balance = Number(rawBalance);
+    return Number.isFinite(balance) ? balance : null;
+}
+
+async function syncUserBalanceFromOperator(userId: string): Promise<number> {
+    const infoRes = await operatorApi.checkInfo(userId);
+    if (!infoRes?.success) {
+        throw new Error('OPERATOR_CHECK_INFO_FAILED');
     }
-    throw new Error('GENERATE_USER_ID_FAILED');
+    const realBalance = readOperatorBalance(infoRes);
+    if (realBalance === null) {
+        throw new Error('OPERATOR_BALANCE_MISSING');
+    }
+    await dbRun("UPDATE users SET balance = ? WHERE userId = ?", [realBalance, userId]);
+    return realBalance;
+}
+
+function syncSeatSnapshot(userId: string, balance: number, energy?: number) {
+    const seatIndex = seats.findIndex((seat: SeatState | null) => seat?.userId === userId);
+    if (seatIndex === -1 || !seats[seatIndex]) {
+        return;
+    }
+    seats[seatIndex].balance = balance;
+    if (typeof energy === 'number') {
+        seats[seatIndex].energy = energy;
+    }
+    emitSeatBalanceUpdate(seatIndex, seats[seatIndex] as SeatState);
 }
 
 function hashPassword(password: string): string {
@@ -355,7 +367,6 @@ app.post('/auth/register', async (req, res) => {
             return;
         }
 
-        // Call Operator API to create player
         let operatorPlayerId = '';
         try {
             const operatorRes = await operatorApi.createPlayer(username);
@@ -377,7 +388,11 @@ app.post('/auth/register', async (req, res) => {
             [userId, username, hashPassword(password), now, now]
         );
         const user = await ensureUserExists(userId);
-        
+        try {
+            const operatorBalance = await syncUserBalanceFromOperator(userId);
+            user.balance = operatorBalance;
+        } catch (_error) {
+        }
         const token = issueSocketJwt(userId);
         res.json({
             ok: true,
@@ -415,19 +430,15 @@ app.post('/auth/login', async (req, res) => {
 
         const userId = String(authUser.userId || '').trim();
         let user = await ensureUserExists(userId);
-
-        // Fetch real-time balance from Operator API
         try {
-            const infoRes = await operatorApi.checkInfo(userId);
-            if (infoRes.success && infoRes.data) {
-                // Update local balance to match Operator API
-                const realBalance = Number(infoRes.data.balance || 0);
-                await dbRun("UPDATE users SET balance = ? WHERE userId = ?", [realBalance, userId]);
-                user.balance = realBalance;
+            const loginTokenRes = await operatorApi.loginToken(userId);
+            if (!loginTokenRes?.success) {
+                res.status(500).json({ ok: false, error: 'OPERATOR_LOGIN_TOKEN_FAILED' });
+                return;
             }
+            user.balance = await syncUserBalanceFromOperator(userId);
         } catch (err) {
             console.error('Operator API Check Info Error:', err);
-            // We can choose to fail login if operator is down, or proceed with local balance. Let's fail for safety.
             res.status(500).json({ ok: false, error: 'OPERATOR_API_UNAVAILABLE' });
             return;
         }
@@ -465,6 +476,10 @@ app.get('/auth/me', async (req, res) => {
             return;
         }
         const user = await ensureUserExists(userId);
+        try {
+            user.balance = await syncUserBalanceFromOperator(userId);
+        } catch (_error) {
+        }
         const authUser = await dbGet("SELECT username FROM auth_users WHERE userId = ?", [userId]);
         res.json({
             ok: true,
@@ -1119,6 +1134,10 @@ io.on('connection', async (socket) => {
         await dbRun("INSERT INTO users (userId, balance, energy, lastLogin) VALUES (?, ?, ?, ?)", [userId, GAME_CONFIG.INITIAL_BALANCE, 0, Date.now()]);
         user = { userId, balance: GAME_CONFIG.INITIAL_BALANCE, energy: 0 };
     }
+    try {
+        user.balance = await syncUserBalanceFromOperator(userId);
+    } catch (_error) {
+    }
     let seatIndex = -1;
     for (let i = 0; i < seats.length; i++) {
         if (seats[i] === null) {
@@ -1192,7 +1211,6 @@ io.on('connection', async (socket) => {
             return;
         }
 
-        // Call Operator API to withdraw bet
         let operatorBalance = user.balance;
         try {
             const withdrawRes = await operatorApi.withdraw(userId, betAmount, `bet-${Date.now()}-${secureRandom()}`);
@@ -1209,8 +1227,9 @@ io.on('connection', async (socket) => {
                 });
                 return;
             }
-            if (withdrawRes.data && typeof withdrawRes.data.balance === 'number') {
-                operatorBalance = withdrawRes.data.balance;
+            const syncedBalance = readOperatorBalance(withdrawRes);
+            if (syncedBalance !== null) {
+                operatorBalance = syncedBalance;
             } else {
                 operatorBalance -= betAmount;
             }
@@ -1240,13 +1259,8 @@ io.on('connection', async (socket) => {
             JSON.stringify({ fishId: data.fishId || null, isTorpedo: !!data.isTorpedo })
         );
         globalJackpot += (betAmount * GAME_CONFIG.JACKPOT_TAX);
-
         const seatIndex = seats.findIndex((seat: SeatState | null) => seat?.socketId === socket.id);
-        if (seatIndex !== -1 && seats[seatIndex]) {
-            seats[seatIndex].balance = balanceAfterBet;
-            seats[seatIndex].energy = newEnergy;
-            emitSeatBalanceUpdate(seatIndex, seats[seatIndex] as SeatState);
-        }
+        syncSeatSnapshot(userId, balanceAfterBet, newEnergy);
 
         socket.emit('energy-update', { energy: newEnergy });
 
@@ -1285,20 +1299,19 @@ io.on('connection', async (socket) => {
             }
 
             const winAmount = baseWinAmount + jackpotWinAmount;
-            
-            // Call Operator API to deposit win
             let finalOperatorBalance = balanceAfterBet;
             if (winAmount > 0) {
                 try {
                     const depositRes = await operatorApi.deposit(userId, winAmount, `win-${Date.now()}-${secureRandom()}`);
-                    if (depositRes.success && depositRes.data && typeof depositRes.data.balance === 'number') {
-                        finalOperatorBalance = depositRes.data.balance;
+                    if (depositRes.success) {
+                        const syncedBalance = readOperatorBalance(depositRes);
+                        finalOperatorBalance = syncedBalance !== null ? syncedBalance : finalOperatorBalance + winAmount;
                     } else {
                         finalOperatorBalance += winAmount;
                     }
                 } catch (err) {
                     console.error('Operator Deposit Error:', err);
-                    finalOperatorBalance += winAmount; // Optimistically update locally
+                    finalOperatorBalance += winAmount;
                 }
             }
 
@@ -1319,10 +1332,7 @@ io.on('connection', async (socket) => {
                 finalBalance,
                 JSON.stringify({ fishId: data.fishId, fishType: fish.type, baseWinAmount, jackpotWinAmount, jackpotTier })
             );
-            if (seatIndex !== -1 && seats[seatIndex]) {
-                seats[seatIndex].balance = finalBalance;
-                emitSeatBalanceUpdate(seatIndex, seats[seatIndex] as SeatState);
-            }
+            syncSeatSnapshot(userId, finalBalance);
             activeFish.delete(data.fishId);
             io.emit('fish-killed', {
                 fishId: data.fishId,
@@ -1379,10 +1389,7 @@ io.on('connection', async (socket) => {
         await dbRun("UPDATE users SET energy = ? WHERE userId = ?", [newEnergy, userId]);
 
         const seatIndex = seats.findIndex((seat: SeatState | null) => seat?.socketId === socket.id);
-        if (seatIndex !== -1 && seats[seatIndex]) {
-            seats[seatIndex].energy = newEnergy;
-            emitSeatBalanceUpdate(seatIndex, seats[seatIndex] as SeatState);
-        }
+        syncSeatSnapshot(userId, Number(user.balance || 0), newEnergy);
         socket.emit('energy-update', { energy: newEnergy });
 
         const rawBet = Number(data?.betAmount ?? 0.1);
@@ -1443,7 +1450,18 @@ io.on('connection', async (socket) => {
 
         let finalBalance = user.balance;
         if (totalWinAmount > 0) {
-            finalBalance = user.balance + totalWinAmount;
+            try {
+                const depositRes = await operatorApi.deposit(userId, totalWinAmount, `orb-${Date.now()}-${secureRandom()}`);
+                if (depositRes.success) {
+                    const syncedBalance = readOperatorBalance(depositRes);
+                    finalBalance = syncedBalance !== null ? syncedBalance : user.balance + totalWinAmount;
+                } else {
+                    finalBalance = user.balance + totalWinAmount;
+                }
+            } catch (err) {
+                console.error('Operator Orb Deposit Error:', err);
+                finalBalance = user.balance + totalWinAmount;
+            }
             metrics.payoutTotal = Number((metrics.payoutTotal + totalWinAmount).toFixed(2));
             metrics.lastKillAt = Date.now();
             await dbRun("UPDATE users SET balance = ? WHERE userId = ?", [finalBalance, userId]);
@@ -1455,10 +1473,7 @@ io.on('connection', async (socket) => {
                 finalBalance,
                 JSON.stringify({ impactX, impactY, orbBetAmount, killedFishIds })
             );
-            if (seatIndex !== -1 && seats[seatIndex]) {
-                seats[seatIndex].balance = finalBalance;
-                emitSeatBalanceUpdate(seatIndex, seats[seatIndex] as SeatState);
-            }
+            syncSeatSnapshot(userId, finalBalance, newEnergy);
         } else {
             await recordTransaction(
                 userId,

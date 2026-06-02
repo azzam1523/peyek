@@ -1,5 +1,12 @@
 import crypto from 'crypto';
 
+type OperatorEnvelope<T = any> = {
+    success?: boolean;
+    data?: T;
+    message?: string;
+    error?: string;
+};
+
 export class OperatorApiClient {
     private baseUrl: string;
     private apiKey: string;
@@ -11,17 +18,15 @@ export class OperatorApiClient {
         this.apiSecret = process.env.OPERATOR_API_SECRET || 'test-secret-key-for-hmac-signing-32ch';
     }
 
-    private async makeRequest(endpoint: string, payload: any) {
+    private async makeRequest<T = any>(endpoint: string, payload: Record<string, unknown>): Promise<OperatorEnvelope<T>> {
         const bodyStr = JSON.stringify(payload);
         const timestamp = Date.now().toString();
         const stringToSign = bodyStr + timestamp;
-        
         const signature = crypto.createHmac('sha256', this.apiSecret)
-                                .update(stringToSign)
-                                .digest('hex');
-
+            .update(stringToSign)
+            .digest('hex');
         const url = `${this.baseUrl}${endpoint}`;
-        
+
         try {
             const response = await fetch(url, {
                 method: 'POST',
@@ -47,23 +52,23 @@ export class OperatorApiClient {
         }
     }
 
-    async createPlayer(username: string) {
+    async createPlayer(username: string): Promise<OperatorEnvelope<{ id?: string; username?: string; balance?: number }>> {
         return this.makeRequest('/v1/player/create-player', { username });
     }
 
-    async loginToken(playerId: string) {
+    async loginToken(playerId: string): Promise<OperatorEnvelope<{ token?: string }>> {
         return this.makeRequest('/v1/player/login-token', { playerId });
     }
 
-    async checkInfo(playerId: string) {
+    async checkInfo(playerId: string): Promise<OperatorEnvelope<{ balance?: number; walletBalance?: number }>> {
         return this.makeRequest('/v1/player/check-info', { playerId });
     }
 
-    async deposit(playerId: string, amount: number, referenceId: string) {
+    async deposit(playerId: string, amount: number, referenceId: string): Promise<OperatorEnvelope<{ balance?: number; walletBalance?: number }>> {
         return this.makeRequest('/v1/player/deposit', { playerId, amount, referenceId });
     }
 
-    async withdraw(playerId: string, amount: number, referenceId: string) {
+    async withdraw(playerId: string, amount: number, referenceId: string): Promise<OperatorEnvelope<{ balance?: number; walletBalance?: number }>> {
         return this.makeRequest('/v1/player/withdraw', { playerId, amount, referenceId });
     }
 }

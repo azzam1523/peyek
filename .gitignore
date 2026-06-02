@@ -40,3 +40,6 @@ backend/node_modules/
 *.sqlite
 *.sqlite3
 *.db
+
+# Zip files
+*.zip

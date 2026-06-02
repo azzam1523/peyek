@@ -35,7 +35,7 @@ Kontrak API auth terbaru:
       "token": "<jwt>",
       "expiresIn": 28800,
       "user": {
-        "userId": "PXXXXXXXXXX",
+        "userId": "<operatorPlayerId>",
         "username": "player_alpha",
         "balance": 2000,
         "energy": 0
@@ -75,6 +75,9 @@ B. Backend (`backend/.env`)
 - REQUIRE_SECURE_TRANSPORT=false
 - ALLOW_INSECURE_LOCALHOST=true
 - ADMIN_TOKEN=
+- OPERATOR_BASE_URL=http://192.206.117.106:6601
+- OPERATOR_API_KEY=
+- OPERATOR_API_SECRET=
 
 Catatan backend env:
 - Backend akan membaca `backend/.env` secara otomatis saat start (tanpa library dotenv).
@@ -94,6 +97,7 @@ Perubahan terbaru auth credential:
 - FE input `username + password`.
 - `userId` dibuat otomatis oleh BE saat register berhasil.
 - FE menerima `userId` dari response auth, lalu pakai `userId` itu untuk WS query.
+- BE lokal menjadi bridge ke Operator API agar `apiSecret` tidak pernah terekspos ke browser.
 
 ------------------------------------------------------------------
 3) CARA JALANKAN (DEV)
@@ -194,26 +198,38 @@ Security/validation:
 - Server adalah source of truth saldo, hp ikan, kill, payout.
 - Auth BE sekarang:
   1. `/auth/register` menerima `username/password`
-  2. validasi username unik
-  3. generate `userId` otomatis di server
-  4. simpan ke `auth_users(userId, username, passwordHash, createdAt, updatedAt)`
-  5. return JWT + profile (`userId`, `username`, `balance`, `energy`)
-  6. `/auth/login` pakai `username/password`, return data sama
+  2. validasi username unik di DB lokal
+  3. BE memanggil Operator API `POST /v1/player/create-player`
+  4. `data.id` dari operator dipakai sebagai `userId`
+  5. BE simpan `auth_users(userId, username, passwordHash, createdAt, updatedAt)`
+  6. BE sinkron `balance` dari Operator API `check-info`
+  7. return JWT + profile (`userId`, `username`, `balance`, `energy`)
+  8. `/auth/login` pakai `username/password`, lalu BE memanggil `login-token` dan `check-info`
 - Migrasi schema BE:
   1. kolom `username` pada `auth_users` dipastikan ada saat bootstrap
   2. data lama di-backfill (`username = userId` jika kosong)
   3. unique index `idx_auth_users_username` dibuat otomatis
+- Sinkron saldo operator:
+  1. login -> `check-info`
+  2. auth me -> `check-info`
+  3. socket connect/init -> `check-info`
+  4. shoot bet -> `withdraw`
+  5. fish killed win -> `deposit`
+  6. lucky orb win -> `deposit`
 - Event `shoot`:
   1. validasi rate limit + bet
-  2. potong balance + tambah energy
-  3. hitung damage ke HP ikan
-  4. jika ikan mati: hitung win/jackpot, update balance, emit `fish-killed`
-  5. kirim `shoot-result`
+  2. BE call Operator API `withdraw`
+  3. update balance lokal dari response operator + tambah energy
+  4. hitung damage ke HP ikan
+  5. jika ikan mati: hitung win/jackpot, BE call Operator API `deposit`
+  6. update balance dari response operator, emit `fish-killed`
+  7. kirim `shoot-result`
 - Event `activate-lucky-orb`:
   1. validasi rate limit + energy + bet
   2. reset energy
   3. hitung lucky hit di server
-  4. kill ikan terpilih, update balance, emit `lucky-orb-cast` dan `fish-killed`
+  4. jika ada payout, BE call Operator API `deposit`
+  5. update balance, emit `lucky-orb-cast` dan `fish-killed`
 
 ------------------------------------------------------------------
 8) REASON `action-rejected` / `shoot-result.rejected`
